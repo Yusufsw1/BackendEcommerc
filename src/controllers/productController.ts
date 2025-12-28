@@ -433,37 +433,41 @@ export const getDistricts = async (req: Request, res: Response) => {
 
 export const handleMidtransWebhook = async (req: Request, res: Response) => {
   try {
-    const { order_id, transaction_status, fraud_status } = req.body as MidtransWebhookBody;
+    const { order_id, transaction_status, fraud_status, status_code, gross_amount, signature_key } = req.body;
 
-    console.log(`Log: Webhook diterima untuk Order ${order_id} dengan status ${transaction_status}`);
+    // --- OPSIONAL: VALIDASI SIGNATURE (Agar Aman dari Hacker) ---
+    // const crypto = require('crypto');
+    // const serverKey = process.env.MIDTRANS_SERVER_KEY!;
+    // const hash = crypto.createHash('sha512').update(order_id + status_code + gross_amount + serverKey).digest('hex');
+    // if (hash !== signature_key) return res.status(403).json({ message: "Invalid signature" });
 
-    let newStatus: "paid" | "cancelled" | "pending" | "" = "";
+    console.log(`Log: Webhook diterima untuk Order ${order_id} [${transaction_status}]`);
 
-    // Logika penentuan status berdasarkan dokumentasi Midtrans
+    let newStatus = "";
+
+    // Logika penentuan status sesuai standar Midtrans
     if (transaction_status === "capture" || transaction_status === "settlement") {
       if (fraud_status === "accept" || !fraud_status) {
         newStatus = "paid";
       }
-    } else if (transaction_status === "cancel" || transaction_status === "deny" || transaction_status === "expire") {
+    } else if (["cancel", "deny", "expire"].includes(transaction_status)) {
       newStatus = "cancelled";
     } else if (transaction_status === "pending") {
       newStatus = "pending";
     }
 
-    // Jika ada perubahan status yang valid, update database
+    // Jika ada perubahan status, update database Supabase
     if (newStatus !== "") {
       const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", order_id);
 
       if (error) throw error;
-
-      console.log(`Success: Order ${order_id} berhasil diupdate ke status ${newStatus}`);
+      console.log(`✅ Berhasil update Order ${order_id} menjadi ${newStatus}`);
     }
 
-    // Midtrans butuh response 200 OK agar tidak mengirim ulang notifikasi
-    res.status(200).json({ message: "Webhook processed successfully" });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Internal Server Error";
-    console.error("Webhook Error:", msg);
-    res.status(500).json({ message: msg });
+    // WAJIB: Kirim respon 200 ke Midtrans
+    res.status(200).json({ message: "Webhook processed" });
+  } catch (error: any) {
+    console.error("❌ Webhook Error:", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 };
