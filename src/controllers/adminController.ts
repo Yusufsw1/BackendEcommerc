@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { supabase } from "../config/supabase";
+import { AuthRequest } from "../middleware/auth";
 
 export const getAdminStats = async (req: Request, res: Response) => {
   try {
@@ -34,13 +35,16 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { status, tracking_number } = req.body;
-    const user = (req as any).user;
+    const authReq = req as AuthRequest;
+    const user = authReq.user;
+    const userRole = authReq.userRole;
 
     // 1. Validasi Akses (Role Check)
-    if (user.role !== "admin") {
+    if (userRole !== "admin") {
+      // <--- Ubah user.role jadi userRole
       // User biasa HANYA boleh mengubah ke 'completed'
       if (status !== "completed") {
-        return res.status(403).json({ message: "Akses ditolak. Anda hanya bisa menyelesaikan pesanan." });
+        return res.status(403).json({ message: "Akses ditolak. Anda bukan Admin." });
       }
 
       // Pastikan order milik user yang sedang login
